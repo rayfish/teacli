@@ -94,7 +94,10 @@ if [ -n "$sumtool" ]; then
 	fi
 fi
 
-chmod +x "$tmp"
+# 755, not +x: mktemp creates the file 0600, and "+x" on that leaves 711, so a
+# binary installed into a root-owned directory would be unreadable to everyone
+# else.
+chmod 755 "$tmp"
 
 target="${INSTALL_DIR}/${BIN_NAME}"
 if mkdir -p "$INSTALL_DIR" 2>/dev/null && [ -w "$INSTALL_DIR" ]; then
