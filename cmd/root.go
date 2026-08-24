@@ -57,7 +57,7 @@ func init() {
 
 // getServer resolves the server to talk to: --server if given, otherwise the default
 func getServer(cmd *cobra.Command) (*config.ServerConfig, error) {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return nil, errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}

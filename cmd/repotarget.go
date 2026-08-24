@@ -100,7 +100,7 @@ func detectCurrentRepo() (*gitremote.Detected, error) {
 		return nil, err
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return nil, errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}

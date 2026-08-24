@@ -111,7 +111,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 			map[string]interface{}{"missing_flags": []string{"--token"}})
 	}
 
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}
@@ -148,7 +148,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 }
 
 func runAuthLogout(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}
@@ -177,7 +177,7 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigList(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}
@@ -221,7 +221,7 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFrom(configPath)
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
 	}

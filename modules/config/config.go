@@ -31,7 +31,16 @@ type ServerConfig struct {
 
 // Load loads configuration from the default location
 func Load() (*Config, error) {
-	configPath := getConfigPath()
+	return LoadFrom("")
+}
+
+// LoadFrom loads configuration from path, or from the default location when
+// path is empty. This is what the --config flag resolves to.
+func LoadFrom(path string) (*Config, error) {
+	configPath := path
+	if configPath == "" {
+		configPath = getConfigPath()
+	}
 
 	cfg := &Config{
 		servers: make(map[string]*ServerConfig),
@@ -98,6 +107,12 @@ func (c *Config) Save() error {
 		if server.Timeout > 0 {
 			section.Key("timeout").SetValue(fmt.Sprintf("%d", server.Timeout))
 		}
+	}
+
+	// An explicit --config may name a file in a directory that does not exist
+	// yet; the default path is created by getConfigPath.
+	if dir := filepath.Dir(c.path); dir != "" {
+		os.MkdirAll(dir, 0755)
 	}
 
 	return c.file.SaveTo(c.path)
