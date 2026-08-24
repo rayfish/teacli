@@ -1,0 +1,10 @@
+# Built binary
+teacli
+
+# Release artifacts
+dist/
+checksums.txt
+
+# Local notes and agent scratch space
+docs
+.superpowers/
