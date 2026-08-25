@@ -47,13 +47,14 @@ just install
 teacli update           # install the latest release
 teacli update --check   # report the available version, change nothing
 teacli update --tag v1.0.0   # pin a specific release
+teacli update --force   # reinstall even when already on that version
 ```
 
 The download is checksum-verified against the release's `checksums.txt`, and the
 new binary must run before it replaces the old one. Releases come from GitHub;
 pass `--host` and `--repo` to install from a Gitea or Forgejo mirror instead. If
 teacli lives in a root-owned directory such as `/usr/local/bin`, run it with
-sudo.
+sudo. `--no-verify` skips the checksum check, which you should not need.
 
 ## Configuration
 
@@ -79,6 +80,20 @@ teacli auth config set <server> <key> <value> [--default]
 teacli auth config unset <server>
 teacli auth logout [server-name]
 ```
+
+Servers live in `~/.config/teacli/teacli.ini`. `--config <path>` points every
+command, `auth login` included, at a different file, and creates its directory
+if it does not exist yet. Use it to keep a CI or per-project config out of the
+home directory.
+
+### Shell completion
+
+```bash
+teacli completion bash|zsh|fish|powershell
+```
+
+The script goes to stdout. Source it, or drop it where your shell looks for
+completions.
 
 ## Repository inference
 
@@ -159,7 +174,7 @@ teacli pr comments delete <owner>/<repo> <comment-id>   # Delete a comment
 teacli pr reviews <owner>/<repo> <pr-number>            # List reviews
 teacli pr review-comments <owner>/<repo> <pr-number> <review-id>  # Inline comments
 teacli pr reply <owner>/<repo> <pr-number> -b "text"    # General comment
-teacli pr reply <owner>/<repo> <pr-number> -b "text" --file path --line N  # Inline review comment
+teacli pr reply <owner>/<repo> <pr-number> -b "text" --comment-id <id> --file path --line N
 teacli pr delete <owner>/<repo> <pr-number> <review-id> # Delete a review (admin only)
 
 # Submit a full review with inline comments in one call
@@ -172,10 +187,16 @@ teacli pr review submit <owner>/<repo> <pr-number> \
 
 `--comment` uses `file:line:body` and can be repeated.
 
+`pr reply` posts a plain comment on the pull request unless `--comment-id` is
+given. That is what turns it into an inline review comment, and `--file` and
+`--line` are then required; on their own they are ignored.
+
 ```bash
 # Edit, inspect and check a PR
-teacli pr update <owner>/<repo> <pr-number> [-t title] [-b body] [--base branch]
-                                            [-a assignee] [-l label-id] [-s open|closed]
+teacli pr update <owner>/<repo> <pr-number> [-t title] [-b body] [--body-file f]
+                                            [--base branch] [-a assignee] [-l label-id]
+                                            [-m milestone-id] [-s open|closed]
+                                            [--allow-maintainer-edit|--no-allow-maintainer-edit]
 teacli pr commits <owner>/<repo> <pr-number>
 teacli pr files <owner>/<repo> <pr-number>
 teacli pr patch <owner>/<repo> <pr-number>
@@ -222,7 +243,8 @@ teacli issue comment delete <owner>/<repo> <comment-id>
 
 ```bash
 # Edit and delete
-teacli issue update <owner>/<repo> <issue-number> [-t title] [-b body] [-s open|closed]
+teacli issue update <owner>/<repo> <issue-number> [-t title] [-b body] [--body-file f]
+                                                  [-s open|closed] [-a assignee] [--ref r]
                                                   [-m milestone-id] [-D due] [--no-due]
 teacli issue delete <owner>/<repo> <issue-number>          # admin only, permanent
 
@@ -241,8 +263,13 @@ teacli issue blocking list|add|remove <owner>/<repo> <issue-number> [<other-numb
 
 # More comment operations
 teacli issue comment get <owner>/<repo> <comment-id>
-teacli issue comment update <owner>/<repo> <comment-id> -b "text"
+teacli issue comment update <owner>/<repo> <comment-id> (-b "text" | --body-file f)
 ```
+
+Wherever a command takes `-b/--body`, `--body-file <path>` reads it from a file
+instead, and `--body-file -` reads stdin. That covers `issue update`,
+`issue comment update`, `pr update` and `release update`, and keeps long bodies
+out of the shell's argument quoting.
 
 ### Repositories
 
@@ -250,17 +277,30 @@ teacli issue comment update <owner>/<repo> <comment-id> -b "text"
 teacli repo list [-u user] [-o org]
 teacli repo get <owner>/<repo>
 teacli repo current                              # the repository inferred from the current directory
-teacli repo search [<keyword>] [-o owner] [--type fork|source|mirror] [--sort alpha|created|updated]
-teacli repo create <name> [-d description] [-p private] [--org <org>]
+teacli repo search [<keyword>] [-o owner] [--type fork|source|mirror|collaborative]
+                              [--sort alpha|created|updated|size|id] [--order asc|desc]
+                              [--topic] [--in-description] [--private|--public]
+                              [--archived|--not-archived]
+teacli repo create <name> [-d description] [-p] [--org <org>]
                           [--default-branch <b>] [--license <l>] [--gitignores <g>]
-teacli repo from-template <template-owner>/<template-repo> <name> [--owner <o>]
-teacli repo edit <owner>/<repo> [--name n] [-d desc] [--private|--public]
-                                [--issues|--no-issues] [--wiki|--no-wiki] [--archived|--unarchived]
+                          [--issue-labels <set>] [--readme <t>] [--template] [--no-auto-init]
+teacli repo from-template <template-owner>/<template-repo> <name> [--owner <o>] [--private]
+                          [--git-hooks] [--topics] [--labels] [--webhooks] [--avatar]
+                          [--git-content=false]   # git content is copied by default
+teacli repo edit <owner>/<repo> [--name n] [-d desc] [--website w] [--default-branch b]
+                                [--private|--public] [--archived|--unarchived] [--template|--no-template]
+                                [--issues|--no-issues] [--wiki|--no-wiki] [--actions|--no-actions]
+                                [--projects|--no-projects] [--packages|--no-packages]
+                                [--releases|--no-releases] [--pull-requests|--no-pull-requests]
 teacli repo rename <owner>/<old-name> <new-name>
 teacli repo delete <owner>/<repo>                # permanent, no confirmation prompt
 teacli repo fork <owner>/<repo> [--org <org>] [--name <n>]
 teacli repo forks <owner>/<repo>
-teacli repo migrate <clone-url> --name <name> [--mirror] [--auth-token <t>] [--wiki] [--issues]
+teacli repo migrate <clone-url> --name <name> [--owner <o>] [--service github|gitlab|gitea|...]
+                                [--mirror] [--mirror-interval 8h] [--private]
+                                [--auth-token <t> | --auth-username <u> --auth-password <p>]
+                                [--wiki] [--issues] [--labels] [--milestones] [--releases]
+                                [--pull-requests] [--lfs] [--lfs-endpoint <url>]
 teacli repo transfer <owner>/<repo> <new-owner>
 teacli repo transfer-accept|transfer-reject <owner>/<repo>
 teacli repo mirror-sync <owner>/<repo>
@@ -276,6 +316,7 @@ teacli repo topic list|add|remove|set <owner>/<repo> [<topic>...]
 
 # Push mirrors
 teacli repo mirror list|get|create|delete <owner>/<repo> [<remote>]
+    [--interval 8h] [--username u] [--password p] [--sync-on-commit]
 
 # Server-side git hooks (admin only)
 teacli repo hook list|get|set|delete <owner>/<repo> [<hook-name>]
@@ -283,6 +324,9 @@ teacli repo hook list|get|set|delete <owner>/<repo> [<hook-name>]
 # Team access
 teacli repo team list|add|remove|check <owner>/<repo> [<team>]
 ```
+
+On `repo archive`, `--format`/`-F` is the archive format, not the output format:
+it replaces the global `--format`, so that command has no JSON output.
 
 ### Files and git objects
 
@@ -292,7 +336,11 @@ teacli file get <owner>/<repo> <path> [-r ref] [-o out]
 teacli file info <owner>/<repo> <path> [-r ref]
 teacli file create <owner>/<repo> <path> (-c content | -f file) [-m message] [-b branch]
 teacli file update <owner>/<repo> <path> (-c content | -f file) [--sha <blob-sha>]
+                                         [--from-path <old-path>]
 teacli file delete <owner>/<repo> <path> [--sha <blob-sha>]
+
+# All three writers share the commit options
+#   -m/--message, -b/--branch, --new-branch, --author-name, --author-email, --signoff
 
 teacli git refs <owner>/<repo> [<prefix>] [--ref-prefix <p>]
 teacli git tree <owner>/<repo> <ref> [--recursive]
@@ -302,12 +350,15 @@ teacli git note <owner>/<repo> <sha>
 
 `file update` and `file delete` look the blob SHA up for you when `--sha` is
 omitted. Content is base64-encoded on the wire; you always pass and receive
-plain text.
+plain text. `-f -` reads the content from stdin. `--new-branch` commits to a new
+branch cut from `--branch`, which is how you stage a change for a PR without
+touching the base branch. `file update --from-path` renames a file in the same
+commit that rewrites it.
 
 ### Commits, tags and statuses
 
 ```bash
-teacli commit list <owner>/<repo> [--sha ref] [--path p] [--stat] [--files]
+teacli commit list <owner>/<repo> [--sha ref] [--not ref] [--path p] [--stat] [--files]
 teacli commit get <owner>/<repo> <sha>
 teacli commit diff <owner>/<repo> <sha>
 teacli commit patch <owner>/<repo> <sha>
@@ -327,11 +378,21 @@ teacli status create <owner>/<repo> <sha> -s pending|success|error|failure|warni
 teacli collaborator list|add|remove|check|permission <owner>/<repo> [<username>...] [-p read|write|admin]
 
 teacli protection branch list|get|create|update|delete <owner>/<repo> [<rule>]
-    [--required-approvals N] [--status-checks a,b] [--push-whitelist-users u1,u2]
-    [--require-signed-commits] [--block-outdated] [--dismiss-stale-approvals]
+    [--rule-name <glob>] [--required-approvals N] [--status-checks a,b]
+    [--enable-push|--no-push] [--push-whitelist-users u1,u2] [--push-whitelist-teams t1]
+    [--merge-whitelist-users u1,u2] [--merge-whitelist-teams t1]
+    [--approvals-whitelist-users u1,u2] [--approvals-whitelist-teams t1]
+    [--protected-files a,b] [--unprotected-files c,d]
+    [--require-signed-commits] [--block-outdated] [--block-rejected-reviews]
+    [--dismiss-stale-approvals]
 teacli protection tag list|get|create|update|delete <owner>/<repo> [<pattern-or-id>]
-    [--whitelist-users u1,u2] [--whitelist-teams t1]
+    [--pattern <glob>] [--whitelist-users u1,u2] [--whitelist-teams t1]
 ```
+
+Each boolean on `protection branch` has a `--no-` twin (`--no-block-outdated`,
+`--no-require-signed-commits`, `--no-dismiss-stale-approvals`,
+`--no-block-rejected-reviews`), so `update` can turn a rule back off. A flag you
+do not pass is left alone.
 
 ### Teams
 
@@ -341,7 +402,9 @@ teacli team mine
 teacli team get <team-id>
 teacli team search <org> <query>
 teacli team create <org> <name> [-p read|write|admin|owner] [-d desc] [--units repo.code,repo.issues]
-teacli team update <team-id> [--name n] [-p perm] [--all-repos|--no-all-repos]
+                                [--all-repos] [--can-create-repos]
+teacli team update <team-id> [--name n] [-p perm] [-d desc] [--units u]
+                             [--all-repos|--no-all-repos] [--can-create-repos|--no-create-repos]
 teacli team delete <team-id>
 teacli team member list|add|remove|check <team-id> [<username>...]
 teacli team repo list|add|remove <team-id> [<owner>/<repo>]
@@ -352,8 +415,9 @@ teacli team repo list|add|remove <team-id> [<owner>/<repo>]
 ```bash
 teacli label list <owner>/<repo>
 teacli label get <owner>/<repo> <label-id>
-teacli label create <owner>/<repo> --name <name> --color <hex> [-d description]
-teacli label update <owner>/<repo> <label-id> [--name <n>] [--color <c>]
+teacli label create <owner>/<repo> --name <name> --color <hex> [-d description] [--exclusive]
+teacli label update <owner>/<repo> <label-id> [--name <n>] [--color <c>] [-d desc]
+                                              [--exclusive|--no-exclusive]
 teacli label delete <owner>/<repo> <label-id>
 ```
 
@@ -363,7 +427,7 @@ teacli label delete <owner>/<repo> <label-id>
 teacli milestone list <owner>/<repo> [-s open|closed|all]
 teacli milestone get <owner>/<repo> <milestone-id>
 teacli milestone create <owner>/<repo> --title <title> [-d description] [-D due-date]
-teacli milestone update <owner>/<repo> <milestone-id> [options]
+teacli milestone update <owner>/<repo> <milestone-id> [-t title] [-d description] [-D due-date]
 teacli milestone close <owner>/<repo> <milestone-id>
 teacli milestone reopen <owner>/<repo> <milestone-id>
 teacli milestone delete <owner>/<repo> <milestone-id>
@@ -374,15 +438,17 @@ teacli milestone delete <owner>/<repo> <milestone-id>
 ```bash
 teacli org list [--public]
 teacli org get <org-name>
-teacli org create <org-name> [-f full-name] [-d description]
+teacli org create <org-name> [-f full-name] [-d description] [-w website] [-l location]
+                             [-v public|internal|private] [--repo-admin-change-team-access]
 teacli org members list <org-name>
 teacli org members add <org-name> <username>
 teacli org members remove <org-name> <username>
 teacli org members check <org-name> <username>
 teacli org delete <org-name> [-y]
 
-teacli org update <org-name> [-f full-name] [-d desc] [-w website] [-l location]
+teacli org update <org-name> [-f full-name] [-d desc] [-w website] [-l location] [-e email]
                              [-v public|limited|private]
+                             [--repo-admin-change-team-access|--no-repo-admin-change-team-access]
 teacli org rename <org-name> <new-name>
 teacli org repos <org-name>
 teacli org permission <org-name> <username>
@@ -390,8 +456,12 @@ teacli org public-members <org-name>
 teacli org publicize|conceal <org-name> <username>
 teacli org avatar <org-name> [-i image.png | --delete]
 teacli org activity <org-name>
-teacli org label list|get|create|update|delete <org-name> [<label-id>] [-n name] [-c color]
+teacli org label list|get|create|update|delete <org-name> [<label-id>]
+    [-n name] [-c color] [-d description] [--exclusive]
 ```
+
+`org create` takes `public`, `internal` or `private`; `org update` takes
+`public`, `limited` or `private`.
 
 ### Users (Admin)
 
@@ -399,10 +469,16 @@ teacli org label list|get|create|update|delete <org-name> [<label-id>] [-n name]
 teacli whoami                 # top-level alias for `user current`
 teacli user current           # also accepts `teacli user whoami`
 teacli user get <username>
-teacli user create <username> -e <email> -p <password> [-a admin]
-teacli user update <username> [options]
+teacli user create <username> -e <email> -p <password> [-a] [-f full-name]
+                              [--must-change-password] [--send-notify]
+teacli user update <username> [-e email] [-f full-name] [-l location] [-w website]
+                              [-d description] [-p password] [--admin|--no-admin]
+                              [--active|--inactive] [--allow-login|--prohibit-login]
+                              [--restricted|--unrestricted]
+                              [--must-change-password|--no-must-change-password]
 teacli user delete <username>
-teacli user list [-q query]
+teacli user list [-q query] [--active] [--admin] [--restricted]
+                 [-s name|created|updated|id] [--order asc|desc]
 
 teacli user search <query>
 teacli user orgs [<username>]
@@ -410,6 +486,7 @@ teacli user activity <username>
 teacli user heatmap <username>
 teacli user avatar [-i image.png | --delete]
 teacli user settings [--full-name n] [--website w] [--location l] [--theme t]
+                     [--description d] [--language en-US]
                      [--hide-email|--show-email] [--hide-activity|--show-activity]
 teacli user email list|add|remove [<email>...]
 ```
@@ -419,6 +496,7 @@ teacli user email list|add|remove [<email>...]
 ```bash
 teacli key ssh list|get|add|delete [<username>|<title>|<key-id>] [-k key | -f keyfile]
 teacli key gpg list|get|add|delete|token|verify [<username>|<key-id>] [-k key | -f keyfile]
+    [--signature <armoured-signature>]
 teacli key deploy list|get|add|delete <owner>/<repo> [<title>|<key-id>] [-k key] [--read-only]
 
 teacli token list
@@ -427,6 +505,10 @@ teacli token delete <name-or-id>
 
 teacli oauth list|get|create|update|delete [<app-id>] [-r https://redirect]
 ```
+
+Proving a GPG key takes two calls: `key gpg token` prints the token to sign, and
+`key gpg verify <key-id> --signature <armoured>` submits the signature over it.
+`-f -` reads a key from stdin.
 
 `token` uses the endpoints Gitea only exposes over basic auth, so it fails with
 "only BasicAuth allowed" when the configured server uses a token. Create tokens
@@ -441,7 +523,8 @@ teacli follow list|followers|add|remove|check [<username>]
 teacli block list|add|remove|check [<username>] [--org <org>]
 teacli subscription list|add|remove|check <owner>/<repo> <issue-number> [<username>]
 
-teacli notification list [<owner>/<repo>] [-s unread,read,pinned] [--type issue,pull]
+teacli notification list [<owner>/<repo>] [-s unread,read,pinned]
+                         [--type issue,pull,commit,repository] [--since t] [--before t]
 teacli notification get <thread-id>
 teacli notification count
 teacli notification read [<thread-id>] [--repo owner/repo]
@@ -457,7 +540,7 @@ teacli reaction comment-list|comment-add|comment-remove <owner>/<repo> <comment-
 ```bash
 teacli time list <owner>/<repo> [<issue-number>] [-u user] [--since t] [--before t]
 teacli time mine
-teacli time add <owner>/<repo> <issue-number> <duration>    # 3600, 90m, 1h30m
+teacli time add <owner>/<repo> <issue-number> <duration> [-u user]   # 3600, 90m, 1h30m
 teacli time delete <owner>/<repo> <issue-number> <time-id>
 teacli time reset <owner>/<repo> <issue-number>
 
@@ -469,11 +552,14 @@ teacli stopwatch list|start|stop|cancel [<owner>/<repo> <issue-number>]
 ```bash
 teacli wiki list <owner>/<repo>
 teacli wiki get <owner>/<repo> <page>
-teacli wiki create <owner>/<repo> <page> (-c content | -f file) [-m message]
-teacli wiki update <owner>/<repo> <page> (-c content | -f file) [-m message]
+teacli wiki create <owner>/<repo> <page> (-c content | -f file) [-m message] [-t title]
+teacli wiki update <owner>/<repo> <page> (-c content | -f file) [-m message] [-t title]
 teacli wiki delete <owner>/<repo> <page>
 teacli wiki revisions <owner>/<repo> <page>
 ```
+
+`-t` defaults to the page argument. Passing a different one on `wiki update`
+renames the page.
 
 ### Packages, attachments and server info
 
@@ -513,7 +599,9 @@ teacli admin badge list|add|remove <username> [<badge-slug>...]
 teacli webhook list <owner>/<repo>
 teacli webhook get <owner>/<repo> <webhook-id>
 teacli webhook create <owner>/<repo> -u <url> [-e events] [-s secret]
-teacli webhook update <owner>/<repo> <webhook-id> [options]
+                                     [--branch-filter 'main,release/*'] [--active=false]
+teacli webhook update <owner>/<repo> <webhook-id> [-u url] [-e events] [-s secret]
+                                                  [--branch-filter f] [--active|--inactive]
 teacli webhook delete <owner>/<repo> <webhook-id>
 teacli webhook test <owner>/<repo> <webhook-id>
 ```
@@ -523,7 +611,11 @@ teacli webhook test <owner>/<repo> <webhook-id>
 
 ```bash
 teacli hook list|get|create|delete [<hook-id>] [--org <org>] [-u url] [-e push,issues]
+    [-t gitea|slack|discord|...] [-s secret] [--content-type json|form]
+    [--branch-filter 'main,release/*'] [--inactive]
 ```
+
+Without `--org` these act on your account's webhooks.
 
 ### Releases
 
@@ -531,10 +623,12 @@ teacli hook list|get|create|delete [<hook-id>] [--org <org>] [-u url] [-e push,i
 teacli release list <owner>/<repo>
 teacli release get <owner>/<repo> <tag>
 teacli release create <owner>/<repo> --tag <tag> --name <name> [-b body]
+                                     [--target <commitish>] [--draft] [--prerelease]
 teacli release delete <owner>/<repo> <tag>
 teacli release upload <owner>/<repo> <tag> <file-path>
-teacli release update <owner>/<repo> <tag> [-n name] [-b body] [--draft|--no-draft]
-                                           [--prerelease|--no-prerelease]
+teacli release update <owner>/<repo> <tag> [-n name] [-b body] [--body-file f]
+                                           [--tag <new-tag>] [--target <commitish>]
+                                           [--draft|--no-draft] [--prerelease|--no-prerelease]
 
 teacli release asset list <owner>/<repo> <tag>
 teacli release asset get <owner>/<repo> <tag> <asset-id>
@@ -654,11 +748,14 @@ export TEACLI_FORMAT=json
 ## Schema Discovery
 
 `teacli schema` (alias `teacli commands`) emits the full command tree as JSON,
-including every command's path, description, args, and flags. Use it to discover
-available commands programmatically instead of parsing `--help` output.
+including every command's path, description, args, and flags with their
+shorthands and usage. Use it to discover available commands programmatically
+instead of parsing `--help` output. This page is a summary; the schema is
+generated from the binary, so it wins wherever the two disagree.
 
 ```bash
 teacli schema --format json | jq '.commands[].path'
+teacli schema --format json | jq '.commands[] | select(.path == "pr merge") | .flags'
 ```
 
 ## Exit Codes
@@ -697,9 +794,19 @@ colliding with subcommand-specific flags):
 - `--server <name>` - Use specific server from config
 - `--format <format>` - Output format: `text` (default) or `json`
 - `--dry-run` - Show what would be done without making changes
-- `--config <path>` - Config file path
+- `--config <path>` - Config file to use instead of `~/.config/teacli/teacli.ini`
 - `--verbose` - Enable verbose output
 - `--all` - Auto-paginate: walk every page and return the full set
+
+## Environment
+
+The binary reads two variables:
+
+- `TEACLI_FORMAT` - default output format, overridden by `--format`
+- `TEACLI_TARGET_REPO` - `owner/repo` to use when the repository is omitted,
+  overriding git remote detection
+
+(`TEACLI_RELEASE_REPO` belongs to `install.sh`, not to teacli itself.)
 
 ## Pagination
 
