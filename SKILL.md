@@ -24,6 +24,8 @@ A fully non-interactive command-line tool for Gitea and Forgejo, designed for sc
 - `teacli schema` emits the full command tree as JSON: prefer it over guessing or parsing `--help`
 - Errors go to stderr as plain text, or as JSON under `--format json`; exit codes are stable (see below)
 - `teacli api` reaches any endpoint that has no typed command yet
+- When writing an issue, PR, review or comment, link every file reference as a
+  URL rather than a bare path (see "File references in issues and PRs")
 
 **Start here:** if a command or flag is not listed below, run `teacli schema --format json`
 instead of assuming. The schema is generated from the binary and is always current.
@@ -140,6 +142,40 @@ Details worth knowing:
 - `file list` and `git refs` take their optional path positionally only after an
   explicit repository, since a path contains slashes too. With the repository
   inferred, pass `--path` or `--ref-prefix`.
+
+## File references in issues and PRs
+
+A file mentioned in an issue, PR, review or comment gets a markdown link to the
+file on the server, never a bare path like `crates/foo/src/main.rs:42`. A bare
+path sends the reader hunting through the web UI; a link does not.
+
+```
+{server-url}/{owner}/{repo}/src/branch/{branch}/{path}#L{line}
+{server-url}/{owner}/{repo}/src/branch/{branch}/{path}#L{start}-L{end}
+{server-url}/{owner}/{repo}/src/commit/{sha}/{path}#L{line}
+```
+
+```markdown
+[node_health_task](http://git.example.com/acme/api/src/branch/main/src/health.rs#L476)
+```
+
+Rules:
+
+- Take `{server-url}` from the configured server (`teacli auth config list`),
+  not from memory, and strip the trailing slash. It is not always the host you
+  are sitting on.
+- Link the revision that actually contains the file. `master` is the default
+  branch, not a guarantee: a file that only exists on a feature branch 404s
+  there. Check with `teacli file info <owner>/<repo> <path> -r <branch>` before
+  linking, or link the branch you are working on.
+- Prefer `/src/commit/{sha}/{path}` for anything meant to stay accurate: a
+  branch link rots as the branch moves, a commit link does not. Use the branch
+  form when the point is "look at how this works today".
+- For a PR review comment, use the same URL in the body. `--file`/`--line` on
+  `pr reply`/`pr review submit` anchor the comment itself; the link is for
+  anything else it refers to.
+- The line anchor is a hint, not a contract: verify the URL returns 200 (`curl
+  -s -o /dev/null -w '%{http_code}' <url>`) when the reference matters.
 
 ## Commands
 
