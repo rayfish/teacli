@@ -2,7 +2,6 @@
 package cmd
 
 import (
-	"github.com/rayfish/teacli/internal/utils"
 	"github.com/rayfish/teacli/modules/errors"
 
 	"github.com/spf13/cobra"
@@ -26,12 +25,22 @@ func runPRReviewDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
-	reviewID := utils.ParseInt64(args[2])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
+	reviewID, err := int64Arg(args[2], "review id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
 		return err
+	}
+
+	if dryRunf(cmd, "Would delete review #%d from pull request %s/%s#%d", reviewID, owner, repo, prNum) {
+		return nil
 	}
 
 	resp, err := client.DeletePullReview(owner, repo, prNum, reviewID)

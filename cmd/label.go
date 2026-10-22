@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"code.gitea.io/sdk/gitea"
-	"github.com/rayfish/teacli/internal/utils"
 	"github.com/rayfish/teacli/modules/errors"
 
 	"github.com/spf13/cobra"
@@ -124,7 +123,10 @@ func runLabelGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	labelID := utils.ParseInt64(args[1])
+	labelID, err := int64Arg(args[1], "label id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -226,7 +228,10 @@ func runLabelUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	labelID := utils.ParseInt64(args[1])
+	labelID, err := int64Arg(args[1], "label id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -325,7 +330,10 @@ func runLabelDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	labelID := utils.ParseInt64(args[1])
+	labelID, err := int64Arg(args[1], "label id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {

@@ -233,7 +233,10 @@ func runIssueGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -330,7 +333,10 @@ func updateIssueState(cmd *cobra.Command, args []string, state string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -340,6 +346,10 @@ func updateIssueState(cmd *cobra.Command, args []string, state string) error {
 	st := gitea.StateType(state)
 	editOpts := gitea.EditIssueOption{
 		State: &st,
+	}
+
+	if dryRunf(cmd, "Would set issue %s/%s#%d to %s", owner, repo, issueNum, state) {
+		return nil
 	}
 
 	issue, resp, err := client.EditIssue(owner, repo, issueNum, editOpts)
@@ -360,7 +370,10 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -399,7 +412,10 @@ func runIssueCommentCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 	body, _ := cmd.Flags().GetString("body")
 
 	if body == "" {
@@ -496,7 +512,10 @@ func runIssueLabelList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -526,7 +545,10 @@ func runIssueLabelAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 	refs := args[2:]
 
 	client, err := getClient(cmd)
@@ -564,7 +586,10 @@ func runIssueLabelRemove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 	refs := args[2:]
 
 	client, err := getClient(cmd)
@@ -604,7 +629,10 @@ func runIssueLabelClear(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -646,7 +674,10 @@ func updateAssignees(cmd *cobra.Command, args []string, add bool) error {
 		return err
 	}
 
-	issueNum := utils.ParseInt64(args[1])
+	issueNum, err := int64Arg(args[1], "issue number")
+	if err != nil {
+		return err
+	}
 	users := args[2:]
 
 	client, err := getClient(cmd)
@@ -708,7 +739,10 @@ func runIssueCommentDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	commentID := utils.ParseInt64(args[1])
+	commentID, err := int64Arg(args[1], "comment id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {

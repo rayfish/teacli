@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -205,7 +206,10 @@ func runPRGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -335,7 +339,10 @@ func runPRMerge(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 	method, _ := cmd.Flags().GetString("method")
 
 	var mergeMethod gitea.MergeStyle
@@ -378,6 +385,11 @@ func runPRMerge(cmd *cobra.Command, args []string) error {
 		return errors.FromGiteaNotFound(resp, err, "pull request", fmt.Sprintf("%d", prNum))
 	}
 
+	if !merged || resp.StatusCode != http.StatusOK {
+		return errors.FromGitea(resp, fmt.Errorf("failed to merge pull request #%d: HTTP %d %s",
+			prNum, resp.StatusCode, http.StatusText(resp.StatusCode)))
+	}
+
 	printer := getPrinter(cmd)
 	return printer.Emit(map[string]any{"status": "merged", "number": prNum, "merged": merged}, func() error {
 		printer.Printf("Merged PR #%d\n", prNum)
@@ -399,7 +411,10 @@ func updatePRState(cmd *cobra.Command, args []string, state string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -409,6 +424,10 @@ func updatePRState(cmd *cobra.Command, args []string, state string) error {
 	st := gitea.StateType(state)
 	editOpts := gitea.EditPullRequestOption{
 		State: &st,
+	}
+
+	if dryRunf(cmd, "Would set pull request %s/%s#%d to %s", owner, repo, prNum, state) {
+		return nil
 	}
 
 	pr, resp, err := client.EditPullRequest(owner, repo, prNum, editOpts)
@@ -429,7 +448,10 @@ func runPRComments(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -474,7 +496,10 @@ func runPRReviews(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -525,8 +550,14 @@ func runPRReviewComments(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
-	reviewID := utils.ParseInt64(args[2])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
+	reviewID, err := int64Arg(args[2], "review id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -577,7 +608,10 @@ func runPRReply(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	body, _ := cmd.Flags().GetString("body")
 	commentID, _ := cmd.Flags().GetInt("comment-id")
@@ -607,6 +641,10 @@ func runPRReply(cmd *cobra.Command, args []string) error {
 			},
 		}
 
+		if dryRunf(cmd, "Would post a review comment on %s/%s#%d at %s:%d", owner, repo, prNum, filePath, line) {
+			return nil
+		}
+
 		review, resp, err := client.CreatePullReview(owner, repo, prNum, opts)
 		if err != nil {
 			return errors.FromGiteaNotFound(resp, err, "pull request", fmt.Sprintf("%d", prNum))
@@ -625,6 +663,10 @@ func runPRReply(cmd *cobra.Command, args []string) error {
 
 	opts := gitea.CreateIssueCommentOption{
 		Body: body,
+	}
+
+	if dryRunf(cmd, "Would comment on pull request %s/%s#%d", owner, repo, prNum) {
+		return nil
 	}
 
 	comment, resp, err := client.CreateIssueComment(owner, repo, prNum, opts)
@@ -649,7 +691,10 @@ func runPRApprove(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 	body, _ := cmd.Flags().GetString("body")
 
 	client, err := getClient(cmd)
@@ -690,7 +735,10 @@ func runPRReject(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 	body, _ := cmd.Flags().GetString("body")
 
 	client, err := getClient(cmd)
@@ -731,8 +779,14 @@ func runPRDismiss(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
-	reviewID := utils.ParseInt64(args[2])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
+	reviewID, err := int64Arg(args[2], "review id")
+	if err != nil {
+		return err
+	}
 	message, _ := cmd.Flags().GetString("message")
 
 	client, err := getClient(cmd)
@@ -772,7 +826,10 @@ func runPRDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {

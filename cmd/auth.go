@@ -121,6 +121,10 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		serverName = extractHostname(serverURL)
 	}
 
+	if dryRunf(cmd, "Would log in to %s as server '%s'", serverURL, serverName) {
+		return nil
+	}
+
 	err = cfg.AddServer(serverName, serverURL, token)
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to save config: %v", err))
@@ -157,16 +161,22 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		serverName = args[0]
 	} else {
-		server, _ := cfg.GetDefaultServer()
-		if server == nil {
+		serverName, err = cfg.GetDefaultServerName()
+		if err != nil {
 			return errors.NewValidationError("no servers configured", nil)
 		}
-		serverName = extractHostname(server.URL)
+	}
+
+	if _, err := cfg.GetServer(serverName); err != nil {
+		return errors.NewValidationError(fmt.Sprintf("failed to remove server: %v", err), nil)
+	}
+	if dryRunf(cmd, "Would log out from server '%s'", serverName) {
+		return nil
 	}
 
 	err = cfg.RemoveServer(serverName)
 	if err != nil {
-		return errors.NewValidationError(fmt.Sprintf("failed to remove server: %v", err), nil)
+		return errors.NewGeneralError(fmt.Sprintf("failed to remove server: %v", err))
 	}
 
 	printer := getPrinter(cmd)
@@ -249,6 +259,10 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return errors.NewValidationError(fmt.Sprintf("unknown key: %s", key), nil)
 	}
 
+	if dryRunf(cmd, "Would update server '%s' key '%s'", serverName, key) {
+		return nil
+	}
+
 	err = cfg.Save()
 	if err != nil {
 		return errors.NewGeneralError(fmt.Sprintf("failed to save config: %v", err))
@@ -256,7 +270,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 
 	isDefault, _ := cmd.Flags().GetBool("default")
 	if isDefault {
-		cfg.SetDefaultServer(serverName)
+		if err := cfg.SetDefaultServer(serverName); err != nil {
+			return errors.NewGeneralError(fmt.Sprintf("failed to set default server: %v", err))
+		}
 	}
 
 	printer := getPrinter(cmd)

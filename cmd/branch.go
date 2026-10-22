@@ -2,6 +2,9 @@
 package cmd
 
 import (
+	"fmt"
+	"net/http"
+
 	"code.gitea.io/sdk/gitea"
 	"github.com/rayfish/teacli/modules/errors"
 
@@ -181,9 +184,18 @@ func runBranchDelete(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	_, resp, err := client.DeleteRepoBranch(owner, repo, branchName)
+	_, resp, err := client.GetRepoBranch(owner, repo, branchName)
 	if err != nil {
 		return errors.FromGiteaNotFound(resp, err, "branch", branchName)
+	}
+
+	deleted, resp, err := client.DeleteRepoBranch(owner, repo, branchName)
+	if err != nil {
+		return errors.FromGiteaNotFound(resp, err, "branch", branchName)
+	}
+	if !deleted || resp.StatusCode != http.StatusNoContent {
+		return errors.FromGitea(resp, fmt.Errorf("failed to delete branch %q: HTTP %d %s",
+			branchName, resp.StatusCode, http.StatusText(resp.StatusCode)))
 	}
 
 	return printer.Emit(map[string]any{"status": "deleted", "branch": branchName}, func() error {

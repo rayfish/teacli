@@ -157,7 +157,10 @@ func runMilestoneGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	milestoneID := utils.ParseInt64(args[1])
+	milestoneID, err := int64Arg(args[1], "milestone id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -242,7 +245,10 @@ func runMilestoneUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	milestoneID := utils.ParseInt64(args[1])
+	milestoneID, err := int64Arg(args[1], "milestone id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -321,7 +327,10 @@ func updateMilestoneState(cmd *cobra.Command, args []string, state string) error
 		return err
 	}
 
-	milestoneID := utils.ParseInt64(args[1])
+	milestoneID, err := int64Arg(args[1], "milestone id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -358,7 +367,10 @@ func runMilestoneDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	milestoneID := utils.ParseInt64(args[1])
+	milestoneID, err := int64Arg(args[1], "milestone id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {

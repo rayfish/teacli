@@ -88,6 +88,9 @@ command, `auth login` included, at a different file, and creates its directory
 if it does not exist yet. Use it to keep a CI or per-project config out of the
 home directory.
 
+Saved config files have mode `0600`. Logout removes the saved server and token;
+omitting its name selects the configured default, including a custom name.
+
 ### Shell completion
 
 ```bash
@@ -220,6 +223,9 @@ teacli pr review submit <owner>/<repo> <pr-number> \
   --comment "path/to/file.go:42:this leaks the handle" \
   --comment "other.go:7:nit: rename"
 ```
+
+`pr merge` reports success only after the server confirms the merge. A missing
+pull request exits `3`, a permission failure exits `4`, and a merge conflict exits `1`.
 
 `--comment` uses `file:line:body` and can be repeated.
 
@@ -674,6 +680,9 @@ teacli release asset rename <owner>/<repo> <tag> <asset-id> <new-name>
 teacli release asset delete <owner>/<repo> <tag> <asset-id>
 ```
 
+Asset downloads require a plain filename from the server unless `--out` chooses
+the destination. Downloads to another origin receive no configured token.
+
 ### Branches
 
 ```bash
@@ -682,6 +691,9 @@ teacli branch get <owner>/<repo> <branch-name>
 teacli branch create <owner>/<repo> <branch-name> --from <source-branch>
 teacli branch delete <owner>/<repo> <branch-name>
 ```
+
+`branch delete` exits `3` if the branch does not exist and `4` if deletion is
+forbidden. It reports success only after the server confirms deletion.
 
 ### Actions/CI/CD
 
@@ -760,6 +772,8 @@ teacli api version --include                        # status line and headers to
 - `--paginate` only works on endpoints that return a JSON array.
 - `--dry-run` prints the method, path and body of a non-GET request and sends
   nothing.
+- `--out` replaces regular files only after the complete request succeeds.
+- Configured tokens are sent only to the configured origin, including redirects.
 
 Prefer a typed command where one exists: those give you table output, argument
 validation, and per-resource not-found messages.
@@ -821,6 +835,8 @@ teacli pr get owner/repo 999 --format json
 ```
 
 stdout carries only successful output, so redirecting stderr away is safe.
+Numeric resource arguments must be complete integers; malformed or overflowing
+values exit `2` before making a request.
 
 ## Global Flags
 
@@ -871,6 +887,9 @@ sends no request:
 teacli pr create owner/repo --head feature --base main --title "New feature" --dry-run
 teacli label delete owner/repo 123 --dry-run
 ```
+
+This includes issue and PR state changes, comments and reviews, webhook updates,
+and auth changes. Auth dry runs leave saved credentials unchanged.
 
 ## Examples
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"code.gitea.io/sdk/gitea"
 	"github.com/rayfish/teacli/modules/errors"
@@ -306,6 +307,9 @@ func runReleaseAssetDownload(cmd *cobra.Command, args []string) error {
 
 	out, _ := cmd.Flags().GetString("out")
 	if out == "" {
+		if !filepath.IsLocal(asset.Name) || asset.Name == "." || strings.ContainsAny(asset.Name, `/\`) {
+			return errors.NewValidationError("release asset name is not a filename; pass --out to choose a destination", nil)
+		}
 		out = asset.Name
 	}
 
@@ -322,19 +326,20 @@ func runReleaseAssetDownload(cmd *cobra.Command, args []string) error {
 	defer httpResp.Body.Close()
 
 	if httpResp.StatusCode >= 400 {
-		body, _ := io.ReadAll(httpResp.Body)
+		body, err := io.ReadAll(httpResp.Body)
+		if err != nil {
+			return errors.NewGeneralError(fmt.Sprintf("failed to read response: %v", err))
+		}
 		return apiError(httpResp.StatusCode, body)
 	}
 
-	file, err := os.Create(out)
-	if err != nil {
-		return errors.NewGeneralError(fmt.Sprintf("failed to create %s: %v", out, err))
-	}
-	defer file.Close()
-
-	written, err := io.Copy(file, httpResp.Body)
-	if err != nil {
-		return errors.NewGeneralError(fmt.Sprintf("failed to write %s: %v", out, err))
+	var written int64
+	if err := writeAtomicFile(out, func(file io.Writer) error {
+		var err error
+		written, err = io.Copy(file, httpResp.Body)
+		return err
+	}); err != nil {
+		return err
 	}
 
 	return emitMessage(cmd, map[string]any{"path": out, "bytes": written},

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"code.gitea.io/sdk/gitea"
-	"github.com/rayfish/teacli/internal/utils"
 	"github.com/rayfish/teacli/modules/errors"
 
 	"github.com/spf13/cobra"
@@ -44,7 +43,10 @@ func runPRReviewSubmit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	prNum := utils.ParseInt64(args[1])
+	prNum, err := int64Arg(args[1], "pull request number")
+	if err != nil {
+		return err
+	}
 	state, _ := cmd.Flags().GetString("state")
 	body, _ := cmd.Flags().GetString("body")
 
@@ -93,6 +95,10 @@ func runPRReviewSubmit(cmd *cobra.Command, args []string) error {
 		State:    reviewState,
 		Body:     body,
 		Comments: comments,
+	}
+
+	if dryRunf(cmd, "Would submit a %s review on %s/%s#%d", state, owner, repo, prNum) {
+		return nil
 	}
 
 	review, resp, err := client.CreatePullReview(owner, repo, prNum, opts)

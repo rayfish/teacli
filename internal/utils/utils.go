@@ -22,17 +22,3 @@ func Truncate(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
-
-// parseInt parses a string to int
-func ParseInt(s string) int {
-	var n int
-	fmt.Sscanf(s, "%d", &n)
-	return n
-}
-
-// parseInt64 parses a string to int64
-func ParseInt64(s string) int64 {
-	var n int64
-	fmt.Sscanf(s, "%d", &n)
-	return n
-}

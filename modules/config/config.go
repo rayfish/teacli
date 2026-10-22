@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/go-ini/ini"
 )
@@ -83,6 +84,20 @@ func LoadFrom(path string) (*Config, error) {
 
 // Save persists the configuration to disk
 func (c *Config) Save() error {
+	path, err := filepath.EvalSymlinks(c.path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("resolve config path: %w", err)
+		}
+		path = c.path
+	}
+	if info, err := os.Stat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("config path must be a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect config path: %w", err)
+	}
 	if c.file == nil {
 		c.file = ini.Empty()
 	}
@@ -92,9 +107,7 @@ func (c *Config) Save() error {
 		c.file.NewSection("global")
 	}
 
-	if c.defaultServer != "" {
-		c.file.Section("global").Key("default_server").SetValue(c.defaultServer)
-	}
+	c.file.Section("global").Key("default_server").SetValue(c.defaultServer)
 
 	// Update server sections
 	for name, server := range c.servers {
@@ -111,11 +124,34 @@ func (c *Config) Save() error {
 
 	// An explicit --config may name a file in a directory that does not exist
 	// yet; the default path is created by getConfigPath.
-	if dir := filepath.Dir(c.path); dir != "" {
-		os.MkdirAll(dir, 0755)
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("create config directory: %w", err)
+		}
 	}
 
-	return c.file.SaveTo(c.path)
+	// A private temporary file keeps credentials protected during writes and
+	// replaces an existing permissive file without exposing the new contents.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".teacli-config-*")
+	if err != nil {
+		return fmt.Errorf("create config file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := c.file.WriteTo(tmp); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close config: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("replace config: %w", err)
+	}
+	return nil
 }
 
 // AddServer adds or updates a server configuration
@@ -133,7 +169,24 @@ func (c *Config) RemoveServer(name string) error {
 		return fmt.Errorf("server not found: %s", name)
 	}
 	delete(c.servers, name)
+	c.file.DeleteSection(name)
+	if c.defaultServer == name {
+		c.defaultServer = ""
+		names := c.ListServers()
+		sort.Strings(names)
+		if len(names) > 0 {
+			c.defaultServer = names[0]
+		}
+	}
 	return c.Save()
+}
+
+// GetDefaultServerName returns the configured name of the default server.
+func (c *Config) GetDefaultServerName() (string, error) {
+	if _, err := c.GetDefaultServer(); err != nil {
+		return "", err
+	}
+	return c.defaultServer, nil
 }
 
 // GetServer retrieves a server configuration by name

@@ -29,7 +29,13 @@ func apiDo(cmd *cobra.Command, method, path string, body io.Reader, headers map[
 	if err != nil {
 		return nil, errors.NewGeneralError(fmt.Sprintf("failed to build request: %v", err))
 	}
-	req.Header.Set("Authorization", "token "+server.Token)
+	origin, err := url.Parse(server.URL)
+	if err != nil {
+		return nil, errors.NewGeneralError(fmt.Sprintf("invalid server URL: %v", err))
+	}
+	if sameOrigin(origin, req.URL) {
+		req.Header.Set("Authorization", "token "+server.Token)
+	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -38,11 +44,42 @@ func apiDo(cmd *cobra.Command, method, path string, body io.Reader, headers map[
 		req.Header.Set(k, v)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := *http.DefaultClient
+	client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if !sameOrigin(origin, next.URL) {
+			next.Header.Del("Authorization")
+		}
+		if http.DefaultClient.CheckRedirect != nil {
+			return http.DefaultClient.CheckRedirect(next, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, errors.NewGeneralError(err.Error())
 	}
 	return resp, nil
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	return strings.EqualFold(a.Scheme, b.Scheme) &&
+		strings.EqualFold(a.Hostname(), b.Hostname()) && originPort(a) == originPort(b)
+}
+
+func originPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return "443"
+	}
+	if strings.EqualFold(u.Scheme, "http") {
+		return "80"
+	}
+	return ""
 }
 
 // apiURL joins a server base URL and an endpoint. Absolute URLs and paths that
@@ -235,24 +272,13 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	out := io.Writer(os.Stdout)
-	if outPath != "" {
-		file, err := os.Create(outPath)
-		if err != nil {
-			return errors.NewGeneralError(fmt.Sprintf("failed to create %s: %v", outPath, err))
-		}
-		defer file.Close()
-		out = file
-	}
-
 	if paginate {
 		perPage, _ := cmd.Flags().GetInt("per-page")
 		merged, err := apiPaginate(cmd, endpoint, headers, perPage)
 		if err != nil {
 			return err
 		}
-		_, err = out.Write(append(merged, '\n'))
-		return err
+		return writeAPIOutput(outPath, merged)
 	}
 
 	var payload io.Reader
@@ -282,14 +308,22 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		return apiError(resp.StatusCode, data)
 	}
 
-	if len(data) == 0 {
-		return nil
+	return writeAPIOutput(outPath, data)
+}
+
+func writeAPIOutput(path string, data []byte) error {
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
 	}
-	if _, err := out.Write(data); err != nil {
+	write := func(out io.Writer) error {
+		_, err := out.Write(data)
+		return err
+	}
+	if path != "" {
+		return writeAtomicFile(path, write)
+	}
+	if err := write(os.Stdout); err != nil {
 		return errors.NewGeneralError(err.Error())
-	}
-	if data[len(data)-1] != '\n' {
-		fmt.Fprintln(out)
 	}
 	return nil
 }

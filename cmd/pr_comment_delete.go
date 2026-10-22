@@ -2,7 +2,6 @@
 package cmd
 
 import (
-	"github.com/rayfish/teacli/internal/utils"
 	"github.com/rayfish/teacli/modules/errors"
 
 	"github.com/spf13/cobra"
@@ -26,7 +25,10 @@ func runPRCommentDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	commentID := utils.ParseInt64(args[1])
+	commentID, err := int64Arg(args[1], "comment id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {

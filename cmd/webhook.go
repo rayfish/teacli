@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"code.gitea.io/sdk/gitea"
-	"github.com/rayfish/teacli/internal/utils"
 	"github.com/rayfish/teacli/modules/errors"
 
 	"github.com/spf13/cobra"
@@ -119,7 +118,10 @@ func runWebhookGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	hookID := utils.ParseInt64(args[1])
+	hookID, err := int64Arg(args[1], "webhook id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -209,7 +211,10 @@ func runWebhookUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	hookID := utils.ParseInt64(args[1])
+	hookID, err := int64Arg(args[1], "webhook id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -270,6 +275,10 @@ func runWebhookUpdate(cmd *cobra.Command, args []string) error {
 			map[string]interface{}{"available": []string{"--url", "--events", "--secret", "--active", "--inactive", "--branch-filter"}})
 	}
 
+	if dryRunf(cmd, "Would update webhook %d", hookID) {
+		return nil
+	}
+
 	resp, err := client.EditRepoHook(owner, repo, hookID, opts)
 	if err != nil {
 		return errors.FromGiteaNotFound(resp, err, "webhook", strconv.FormatInt(hookID, 10))
@@ -288,7 +297,10 @@ func runWebhookDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	hookID := utils.ParseInt64(args[1])
+	hookID, err := int64Arg(args[1], "webhook id")
+	if err != nil {
+		return err
+	}
 
 	client, err := getClient(cmd)
 	if err != nil {
@@ -320,7 +332,10 @@ func runWebhookTest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	hookID := utils.ParseInt64(args[1])
+	hookID, err := int64Arg(args[1], "webhook id")
+	if err != nil {
+		return err
+	}
 
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	if dryRun {
