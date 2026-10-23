@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"code.gitea.io/sdk/gitea"
 	"github.com/rayfish/teacli/modules/errors"
 	"github.com/spf13/cobra"
 )
@@ -72,6 +74,7 @@ func TestPRMutationsRespectDryRun(t *testing.T) {
 	}{
 		{name: "resolve", run: runPRResolve, args: []string{"owner/repo", "2"}},
 		{name: "unresolve", run: runPRUnresolve, args: []string{"owner/repo", "2"}},
+		{name: "approve", run: runPRApprove, args: []string{"owner/repo", "1"}},
 		{name: "close", run: runPRClose, args: []string{"owner/repo", "1"}},
 		{name: "reopen", run: runPRReopen, args: []string{"owner/repo", "1"}},
 		{name: "reply", run: runPRReply, args: []string{"owner/repo", "1"}},
@@ -184,6 +187,68 @@ func TestPRRejectsMalformedNumbers(t *testing.T) {
 			}
 			if requests != 0 {
 				t.Errorf("invalid input sent %d requests", requests)
+			}
+		})
+	}
+}
+
+func TestPRApproveRequiresApprovedReview(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		approved bool
+	}{
+		{"approved", `{"id":7,"state":"APPROVED"}`, true},
+		{"approved without message", `{"id":7,"state":"APPROVED"}`, true},
+		{"pending", `{"id":7,"state":"PENDING"}`, false},
+		{"comment", `{"id":7,"state":"COMMENT"}`, false},
+		{"changes requested", `{"id":7,"state":"REQUEST_CHANGES"}`, false},
+		{"missing state", `{"id":7}`, false},
+		{"null", `null`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requests := 0
+			cmd := safetyCommand(t, func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/repos/owner/repo/pulls/1/reviews" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				}
+				var payload gitea.CreatePullReviewOptions
+				if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+					t.Error(err)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				if payload.State != gitea.ReviewStateApproved {
+					t.Errorf("approval event = %q, want %q", payload.State, gitea.ReviewStateApproved)
+				}
+				fmt.Fprint(w, tt.response)
+			})
+			// Approval needs no message; the SDK accepts that only for APPROVED.
+			if tt.name == "approved without message" {
+				if err := cmd.Flags().Set("body", ""); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out, err := safetyOutput(t, func() error { return runPRApprove(cmd, []string{"owner/repo", "1"}) })
+			if requests != 1 {
+				t.Errorf("sent %d requests, want 1", requests)
+			}
+			if tt.approved {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(out, "Approved PR #1") {
+					t.Errorf("missing approval confirmation: %s", out)
+				}
+			} else {
+				if errors.ExitCode(err) != errors.ExitGeneralError {
+					t.Errorf("error = %v, want general error", err)
+				}
+				if out != "" {
+					t.Errorf("unapproved review reported success: %s", out)
+				}
 			}
 		})
 	}

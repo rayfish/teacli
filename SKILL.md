@@ -248,6 +248,10 @@ teacli pr review submit <owner>/<repo> <pr-number> \
   --comment "other.go:7:nit: rename"
 ```
 
+`pr approve` sends the `APPROVED` review event and reports success only when the
+server returns an approved review. A pending or missing review exits `1` without
+printing approval. The approval message is optional; `--dry-run` sends no write.
+
 `pr merge` reports success only after the server confirms the merge. A missing
 pull request exits `3`, a permission failure exits `4`, and a merge conflict exits `1`.
 

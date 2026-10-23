@@ -684,7 +684,7 @@ func runPRApprove(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := gitea.CreatePullReviewOptions{
-		State: "APPROVE",
+		State: gitea.ReviewStateApproved,
 		Body:  body,
 	}
 
@@ -701,6 +701,13 @@ func runPRApprove(cmd *cobra.Command, args []string) error {
 	review, resp, err := client.CreatePullReview(owner, repo, prNum, opts)
 	if err != nil {
 		return errors.FromGiteaNotFound(resp, err, "pull request", fmt.Sprintf("%d", prNum))
+	}
+
+	if review == nil {
+		return errors.NewGeneralError(fmt.Sprintf("server did not confirm approval of PR #%d: no review returned", prNum))
+	}
+	if review.State != gitea.ReviewStateApproved {
+		return errors.NewGeneralError(fmt.Sprintf("server did not confirm approval of PR #%d: review #%d has state %q, expected %s", prNum, review.ID, review.State, gitea.ReviewStateApproved))
 	}
 
 	printer := getPrinter(cmd)
