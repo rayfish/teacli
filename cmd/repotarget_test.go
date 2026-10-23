@@ -105,58 +105,9 @@ func TestRepoTargetWhenTheRemoteMatchesNoServer(t *testing.T) {
 	}
 }
 
-func TestInferredRepositorySelectsItsServer(t *testing.T) {
-	stubDetect(t, here, nil)
-	resetInferredServer(t)
-	cmd := &cobra.Command{Use: "list [<owner>/<repo>]"}
-
-	if _, _, _, err := repoTarget(cmd, nil, 0); err != nil {
-		t.Fatalf("repoTarget: %v", err)
-	}
-	if got := inferredServer(); got != "example" {
-		t.Errorf("inferredServer() = %q, want example", got)
-	}
-}
-
-func TestExplicitRepositoryDoesNotSelectAServer(t *testing.T) {
-	stubDetect(t, here, nil)
-	resetInferredServer(t)
-	cmd := &cobra.Command{Use: "list [<owner>/<repo>]"}
-
-	if _, _, _, err := repoTarget(cmd, []string{"other/thing"}, 0); err != nil {
-		t.Fatalf("repoTarget: %v", err)
-	}
-	if got := inferredServer(); got != "" {
-		t.Errorf("inferredServer() = %q, want it left unset", got)
-	}
-}
-
 // asCLIError unwraps err into the CLI's structured error type.
 func asCLIError(err error, target **errors.CLIError) bool {
 	return stderrors.As(err, target)
-}
-
-// resetInferredServer clears the server an earlier test may have inferred.
-func resetInferredServer(t *testing.T) {
-	t.Helper()
-	inferredServerName = ""
-	t.Cleanup(func() { inferredServerName = "" })
-}
-
-func TestServerChoicePrefersTheFlagThenTheInferredServer(t *testing.T) {
-	tests := []struct {
-		flag, inferred, want string
-	}{
-		{"named", "example", "named"},
-		{"named", "", "named"},
-		{"", "example", "example"},
-		{"", "", ""},
-	}
-	for _, tt := range tests {
-		if got := serverChoice(tt.flag, tt.inferred); got != tt.want {
-			t.Errorf("serverChoice(%q, %q) = %q, want %q", tt.flag, tt.inferred, got, tt.want)
-		}
-	}
 }
 
 func TestCurrentRepoFieldsDescribeTheDetectedRepository(t *testing.T) {

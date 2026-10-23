@@ -70,6 +70,8 @@ func TestPRMutationsRespectDryRun(t *testing.T) {
 		args   []string
 		inline bool
 	}{
+		{name: "resolve", run: runPRResolve, args: []string{"owner/repo", "2"}},
+		{name: "unresolve", run: runPRUnresolve, args: []string{"owner/repo", "2"}},
 		{name: "close", run: runPRClose, args: []string{"owner/repo", "1"}},
 		{name: "reopen", run: runPRReopen, args: []string{"owner/repo", "1"}},
 		{name: "reply", run: runPRReply, args: []string{"owner/repo", "1"}},

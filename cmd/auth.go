@@ -161,9 +161,9 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		serverName = args[0]
 	} else {
-		serverName, err = cfg.GetDefaultServerName()
+		serverName, err = selectedServer(cfg)
 		if err != nil {
-			return errors.NewValidationError("no servers configured", nil)
+			return err
 		}
 	}
 

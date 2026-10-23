@@ -24,7 +24,7 @@ func TestGlobalFlagsArePersistent(t *testing.T) {
 	if sub == nil {
 		t.Fatal("pr list command not found")
 	}
-	for _, name := range []string{"format", "server", "dry-run", "all"} {
+	for _, name := range []string{"format", "host", "server", "dry-run", "all"} {
 		// cobra only merges persistent flags into a command's own FlagSet
 		// lazily (e.g. during Execute/ParseFlags), so Find() alone leaves
 		// sub.Flags() unmerged. Command.Flag() is cobra's public API for

@@ -54,8 +54,10 @@ teacli update --force   # reinstall even when already on that version
 
 The download is checksum-verified against the release's `checksums.txt`, and the
 new binary must run before it replaces the old one. Releases come from GitHub;
-pass `--host` and `--repo` to install from a Gitea or Forgejo mirror instead. If
-teacli lives in a root-owned directory such as `/usr/local/bin`, run it with
+pass `update --host` and `--repo` to install from a Gitea or Forgejo mirror instead.
+On `update`, the local `--host` selects the release source and defaults to GitHub;
+it overrides the global instance flag. Use `--server` to select credentials for a
+mirror. If teacli lives in a root-owned directory such as `/usr/local/bin`, run it with
 sudo. `--no-verify` skips the checksum check, which you should not need.
 
 ## Configuration
@@ -89,7 +91,23 @@ if it does not exist yet. Use it to keep a CI or per-project config out of the
 home directory.
 
 Saved config files have mode `0600`. Logout removes the saved server and token;
-omitting its name selects the configured default, including a custom name.
+omitting its name uses the selected instance, requiring `--host` with multiple
+instances.
+
+### Instance selection
+
+With one configured instance, teacli selects it automatically. With more than
+one, `--host` is required, even if a default is configured or a git remote
+matches an instance. Missing or ambiguous hosts exit `2` and ask for `--host`.
+
+`--host` accepts a configured name, hostname (including any port), or full server
+URL. Use a configured name when multiple instances share a hostname.
+`--server` remains an alias for `--host`; pass only one of them.
+
+```bash
+teacli --host forge.example.com repo list
+teacli --host work issue list owner/repo
+```
 
 ### Shell completion
 
@@ -104,7 +122,7 @@ completions.
 
 Every command that starts with `<owner>/<repo>` can be run without it from
 inside a clone of that repository. `teacli` reads the git remotes of the current
-directory, matches their host against the servers in your config, and uses the
+directory, matches their host against the selected instance, and uses the
 repository the matching remote points at.
 
 ```bash
@@ -130,11 +148,11 @@ Both exit 2, like any other bad argument.
 Details worth knowing:
 
 - Remotes are tried in the order `origin`, `upstream`, then the rest, and the
-  first one that matches a configured server wins. A fork with `origin` on Gitea
+  first one that matches the selected instance wins. A fork with `origin` on Gitea
   and `upstream` on GitHub resolves to the Gitea one either way.
-- The matched server also selects the server to talk to, so a clone of a
-  non-default server works without `--server`. Naming a repository explicitly
-  never does this: the directory you type it in does not redirect it.
+- Remotes are matched only against the selected instance. With multiple
+  instances configured, pass `--host` even when inferring the repository.
+  Naming a repository explicitly still uses the selected instance.
 - `TEACLI_TARGET_REPO=owner/repo` overrides detection, for CI and containers
   with no clone. (`TEACLI_RELEASE_REPO` is a different thing: `install.sh` reads
   it to find teacli's own repository.)
@@ -190,6 +208,8 @@ teacli pr list <owner>/<repo> [-s open|closed|all]
 
 # Get PR details and diff
 teacli pr get <owner>/<repo> <pr-number>
+teacli pr find <owner>/<repo> <base> <head>
+teacli pr pinned <owner>/<repo>
 teacli pr diff <owner>/<repo> <pr-number>
 
 # Create PR
@@ -197,6 +217,8 @@ teacli pr create <owner>/<repo> --head <branch> --base <branch> --title <title>
 
 # Merge PR
 teacli pr merge <owner>/<repo> <pr-number> [--method merge|rebase|rebase-merge|squash] [--delete-branch]
+teacli pr cancel-auto-merge <owner>/<repo> <pr-number>
+teacli pr update-branch <owner>/<repo> <pr-number> [--style merge|rebase]
 
 # Close/Reopen PR
 teacli pr close <owner>/<repo> <pr-number>
@@ -212,8 +234,10 @@ teacli pr comments <owner>/<repo> <pr-number>           # List issue comments
 teacli pr comments delete <owner>/<repo> <comment-id>   # Delete a comment
 teacli pr reviews <owner>/<repo> <pr-number>            # List reviews
 teacli pr review-comments <owner>/<repo> <pr-number> <review-id>  # Inline comments
+teacli pr resolve <owner>/<repo> <comment-id>         # Resolve an inline conversation
+teacli pr unresolve <owner>/<repo> <comment-id>       # Reopen an inline conversation
 teacli pr reply <owner>/<repo> <pr-number> -b "text"    # General comment
-teacli pr reply <owner>/<repo> <pr-number> -b "text" --comment-id <id> --file path --line N
+teacli pr reply <owner>/<repo> <pr-number> -b "text" --comment-id <id>
 teacli pr delete <owner>/<repo> <pr-number> <review-id> # Delete a review (admin only)
 
 # Submit a full review with inline comments in one call
@@ -227,11 +251,44 @@ teacli pr review submit <owner>/<repo> <pr-number> \
 `pr merge` reports success only after the server confirms the merge. A missing
 pull request exits `3`, a permission failure exits `4`, and a merge conflict exits `1`.
 
+`pr resolve` and `pr unresolve` take the conversation's first comment ID from
+`pr review-comments` (the ID column in text output), not a PR number or review ID. They require the
+resolve-comment API introduced in Gitea 1.26 (or a compatible server).
+Gitea 1.25 and Forgejo 17 do not expose these endpoints; servers without them
+require the web UI. Missing comments or unsupported endpoints fail with a diagnostic;
+only HTTP 204 confirms success. Both commands support `--dry-run`.
+
 `--comment` uses `file:line:body` and can be repeated.
 
 `pr reply` posts a plain comment on the pull request unless `--comment-id` is
-given. That is what turns it into an inline review comment, and `--file` and
-`--line` are then required; on their own they are ignored.
+given. With that flag, it replies to the existing conversation using its first
+comment ID. This requires Gitea's review-comment reply API (present in Gitea
+28.2; absent in Forgejo 17). `--file` and `--line` are retained but ignored.
+
+```bash
+# Create a pending review, then submit it later
+teacli pr review submit owner/repo 42 --state pending -b "Draft review"
+teacli pr review submit owner/repo 42 --review-id 7 --state approve
+
+# Manage comments on an existing review (Forgejo API)
+teacli pr review comment get owner/repo 42 7 9
+teacli pr review comment create owner/repo 42 7 -b "Check this" --file src/main.go --line 12
+teacli pr review comment delete owner/repo 42 7 9
+```
+
+`review submit --review-id` submits an existing pending review. It cannot be
+combined with `--comment`, `--commit`, or `--state pending`. `--body-file` reads
+the review summary from a file, or stdin with `-`. `--commit <sha>` selects the
+commit when creating a review.
+
+`review comment create` also accepts `--body-file`, `--old` for the old side of
+the diff, and `--extra-lines N` for a multiline comment. These individual review
+comment endpoints are exposed by Forgejo 17, not Gitea 28.2. A server that lacks
+an endpoint returns an error; teacli does not substitute a different operation.
+
+The PR and review command coverage was checked against the
+[Gitea 28.2 API specification](https://github.com/go-gitea/gitea/blob/v28.2.0/templates/swagger/v1-swagger.generated.json)
+and [Forgejo 17 API specification](https://codeberg.org/forgejo/forgejo/src/tag/v17.0.0/templates/swagger/v1_json.tmpl).
 
 ```bash
 # Edit, inspect and check a PR
@@ -843,7 +900,8 @@ values exit `2` before making a request.
 Persistent flags available on every subcommand, with no shorthand (to avoid
 colliding with subcommand-specific flags):
 
-- `--server <name>` - Use specific server from config
+- `--host <name|hostname|url>` - Select a configured instance; required with multiple instances
+- `--server <name|hostname|url>` - Alias for `--host`
 - `--format <format>` - Output format: `text` (default) or `json`
 - `--dry-run` - Show what would be done without making changes
 - `--config <path>` - Config file to use instead of `~/.config/teacli/teacli.ini`

@@ -98,8 +98,9 @@ func apiURL(base, path string) string {
 
 // apiRequest sends a request and returns the response body, mapping HTTP errors
 // onto the CLI's exit codes. It exists for endpoints the SDK does not wrap;
-// prefer the SDK client everywhere else.
-func apiRequest(cmd *cobra.Command, method, path string, body any) ([]byte, error) {
+// prefer the SDK client everywhere else. expectedStatus optionally restricts
+// successful responses to the status codes documented for a typed endpoint.
+func apiRequest(cmd *cobra.Command, method, path string, body any, expectedStatus ...int) ([]byte, error) {
 	var payload io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -124,6 +125,15 @@ func apiRequest(cmd *cobra.Command, method, path string, body any) ([]byte, erro
 		return nil, apiError(resp.StatusCode, data)
 	}
 
+	if len(expectedStatus) > 0 {
+		matched := false
+		for _, status := range expectedStatus {
+			matched = matched || resp.StatusCode == status
+		}
+		if !matched {
+			return nil, errors.NewGeneralError(fmt.Sprintf("unexpected HTTP %d from %s %s", resp.StatusCode, method, path))
+		}
+	}
 	return data, nil
 }
 

@@ -146,9 +146,9 @@ func init() {
 
 	prReplyCmd.Flags().StringP("body", "b", "", "Reply text (required)")
 	prReplyCmd.MarkFlagRequired("body")
-	prReplyCmd.Flags().Int("comment-id", 0, "ID of comment to reference (for inline review comments)")
-	prReplyCmd.Flags().String("file", "", "File path for inline review comment (required with --comment-id)")
-	prReplyCmd.Flags().Int("line", 0, "Line number for inline review comment (required with --comment-id)")
+	prReplyCmd.Flags().Int("comment-id", 0, "First comment ID of the conversation to reply to (Gitea reply API required)")
+	prReplyCmd.Flags().String("file", "", "Deprecated: replies use the conversation comment ID")
+	prReplyCmd.Flags().Int("line", 0, "Deprecated: replies use the conversation comment ID")
 
 	prApproveCmd.Flags().StringP("body", "b", "", "Approval message")
 	prRejectCmd.Flags().StringP("body", "b", "", "Rejection/request changes message")
@@ -571,7 +571,7 @@ func runPRReviewComments(cmd *cobra.Command, args []string) error {
 
 	printer := getPrinter(cmd)
 
-	headers := []string{"File", "Line", "Author", "Status", "Comment"}
+	headers := []string{"ID", "File", "Line", "Author", "Status", "Comment"}
 
 	sort.Slice(comments, func(i, j int) bool {
 		if comments[i].Path != comments[j].Path {
@@ -594,7 +594,7 @@ func runPRReviewComments(cmd *cobra.Command, args []string) error {
 		if c.Reviewer != nil {
 			author = c.Reviewer.UserName
 		}
-		rows = append(rows, []string{file, line, author, status, comment})
+		rows = append(rows, []string{fmt.Sprint(c.ID), file, line, author, status, comment})
 	}
 
 	return printer.Emit(comments, func() error {
@@ -615,50 +615,31 @@ func runPRReply(cmd *cobra.Command, args []string) error {
 
 	body, _ := cmd.Flags().GetString("body")
 	commentID, _ := cmd.Flags().GetInt("comment-id")
-	filePath, _ := cmd.Flags().GetString("file")
-	line, _ := cmd.Flags().GetInt("line")
 
 	client, err := getClient(cmd)
 	if err != nil {
 		return err
 	}
 
+	if commentID < 0 {
+		return errors.NewValidationError("comment id must be positive", nil)
+	}
 	if commentID > 0 {
-		if filePath == "" || line == 0 {
-			return errors.NewValidationError("when replying to a review comment, you must specify --file and --line",
-				map[string]interface{}{"missing": []string{"--file", "--line"}})
+		if strings.TrimSpace(body) == "" {
+			return errors.NewValidationError("reply body must not be empty", nil)
 		}
-
-		opts := gitea.CreatePullReviewOptions{
-			State: "COMMENT",
-			Body:  body,
-			Comments: []gitea.CreatePullReviewComment{
-				{
-					Path:       filePath,
-					Body:       body,
-					NewLineNum: int64(line),
-				},
-			},
-		}
-
-		if dryRunf(cmd, "Would post a review comment on %s/%s#%d at %s:%d", owner, repo, prNum, filePath, line) {
+		if dryRunf(cmd, "Would reply to conversation #%d on %s/%s#%d", commentID, owner, repo, prNum) {
 			return nil
 		}
-
-		review, resp, err := client.CreatePullReview(owner, repo, prNum, opts)
+		payload := struct {
+			Body string `json:"body"`
+		}{Body: body}
+		path := fmt.Sprintf("%s/comments/%d/replies", pullRequestPath(owner, repo, prNum), commentID)
+		data, err := apiRequest(cmd, http.MethodPost, path, payload, http.StatusCreated)
 		if err != nil {
-			return errors.FromGiteaNotFound(resp, err, "pull request", fmt.Sprintf("%d", prNum))
+			return err
 		}
-
-		printer := getPrinter(cmd)
-		return printer.Emit(review, func() error {
-			printer.Printf("Review comment created successfully!\n")
-			printer.Printf("Review ID: %d\n", review.ID)
-			printer.Printf("File:      %s\n", filePath)
-			printer.Printf("Line:      %d\n", line)
-			printer.Printf("\n%s\n", body)
-			return nil
-		})
+		return emitPRReviewComment(cmd, data)
 	}
 
 	opts := gitea.CreateIssueCommentOption{

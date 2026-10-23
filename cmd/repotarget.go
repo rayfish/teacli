@@ -4,7 +4,6 @@ import (
 	stderrors "errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 
@@ -19,13 +18,6 @@ import (
 // currentRepo resolves the repository of the working directory, at most once
 // per process. Tests replace it.
 var currentRepo = sync.OnceValues(detectCurrentRepo)
-
-// inferredServerName records the server the detected repository belongs to, so
-// getServer can talk to it rather than to the default one. A process runs one
-// command, and it is set only when that command actually infers its repository,
-// which keeps an explicit owner/repo argument from being redirected by whatever
-// directory it was typed in.
-var inferredServerName string
 
 // repoTarget resolves the leading <owner>/<repo> argument, inferring it from
 // the git remote of the current directory when it was left out. wantRest is
@@ -46,16 +38,8 @@ func repoTarget(cmd *cobra.Command, args []string, wantRest int) (string, string
 		return "", "", nil, inferenceError(cmd, err)
 	}
 
-	inferredServerName = detected.Server
-
 	full := append([]string{detected.Owner + "/" + detected.Repo}, args...)
 	return detected.Owner, detected.Repo, full, nil
-}
-
-// inferredServer reports the server the inferred repository belongs to, or ""
-// when nothing was inferred.
-func inferredServer() string {
-	return inferredServerName
 }
 
 // inferenceError explains why the repository could not be worked out, and
@@ -87,41 +71,30 @@ func inferenceError(cmd *cobra.Command, err error) error {
 // servers. The variable is named apart from install.sh's TEACLI_REPO, which
 // says which repository to download teacli itself from.
 func detectCurrentRepo() (*gitremote.Detected, error) {
+	cfg, err := config.LoadFrom(configPath)
+	if err != nil {
+		return nil, errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
+	}
+	name, err := selectedServer(cfg)
+	if err != nil {
+		return nil, err
+	}
 	if env := os.Getenv("TEACLI_TARGET_REPO"); env != "" {
 		owner, repo, err := utils.ParseRepoArg(env)
 		if err != nil {
 			return nil, errors.NewValidationError("invalid TEACLI_TARGET_REPO: "+err.Error(), nil)
 		}
-		return &gitremote.Detected{Remote: "TEACLI_TARGET_REPO", Owner: owner, Repo: repo}, nil
+		return &gitremote.Detected{Remote: "TEACLI_TARGET_REPO", Server: name, Owner: owner, Repo: repo}, nil
 	}
-
 	dir, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
-
-	cfg, err := config.LoadFrom(configPath)
+	server, err := cfg.GetServer(name)
 	if err != nil {
-		return nil, errors.NewGeneralError(fmt.Sprintf("failed to load config: %v", err))
+		return nil, err
 	}
-	return gitremote.Detect(dir, configuredServers(cfg))
-}
-
-// configuredServers lists the configured servers by name, sorted so that a
-// host configured twice always resolves the same way.
-func configuredServers(cfg *config.Config) []gitremote.Server {
-	names := cfg.ListServers()
-	sort.Strings(names)
-
-	servers := make([]gitremote.Server, 0, len(names))
-	for _, name := range names {
-		server, err := cfg.GetServer(name)
-		if err != nil || server == nil {
-			continue
-		}
-		servers = append(servers, gitremote.Server{Name: name, URL: server.URL})
-	}
-	return servers
+	return gitremote.Detect(dir, []gitremote.Server{{Name: name, URL: server.URL}})
 }
 
 // repoTargetByArg resolves the leading [<owner>/<repo>] of a command whose
